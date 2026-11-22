@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Travel Expenses</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar no-print">
+    <div class="brand">✈️ <span>Travel Expenses</span></div>
+    <div class="topbar-actions">
+      <button id="btn-new-trip" class="btn primary">+ New trip</button>
+      <button id="btn-import" class="btn">Import</button>
+      <button id="btn-settings" class="btn">⚙ Settings</button>
+      <input type="file" id="import-file" accept=".json,application/json" hidden />
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar no-print">
+      <h3>Trips</h3>
+      <ul id="trip-list" class="trip-list"></ul>
+    </aside>
+
+    <main id="main">
+      <section id="empty-state" class="empty">
+        <h2>Business travel expense reports, done for you</h2>
+        <p>Create a trip, then drop in receipts — photos, PDFs, or booking emails. The app reads them, fills in flights, hotels, taxis, meals and everything else, and builds a report ready for the expenses office.</p>
+        <button class="btn primary big" onclick="document.getElementById('btn-new-trip').click()">Create your first trip</button>
+      </section>
+
+      <section id="trip-view" hidden>
+        <div class="trip-header no-print">
+          <div>
+            <h1 id="trip-title"></h1>
+            <div id="trip-subtitle" class="muted"></div>
+          </div>
+          <div class="trip-header-actions">
+            <button id="btn-export-json" class="btn">Backup (JSON)</button>
+            <button id="btn-delete-trip" class="btn danger">Delete trip</button>
+          </div>
+        </div>
+
+        <nav class="tabs no-print" id="tabs">
+          <button data-tab="inbox" class="active">📥 Add receipts</button>
+          <button data-tab="details">🧾 Trip details</button>
+          <button data-tab="itinerary">🗺 Itinerary</button>
+          <button data-tab="expenses">💶 Expenses</button>
+          <button data-tab="report">📄 Report</button>
+        </nav>
+
+        <!-- INBOX -->
+        <div class="tab-panel" data-panel="inbox">
+          <div id="dropzone" class="dropzone">
+            <div class="dz-icon">📎</div>
+            <p><strong>Drop receipts here</strong> or <label class="link">browse<input type="file" id="file-input" multiple accept="image/*,application/pdf,.eml,.txt,.html,.htm,message/rfc822,text/plain" hidden /></label></p>
+            <p class="muted small">Photos of receipts, PDF invoices, boarding passes, hotel folios, taxi/Uber receipts, saved emails (.eml/.txt). You can also paste an image with Ctrl/⌘+V.</p>
+          </div>
+
+          <div class="card">
+            <h3>Paste an email</h3>
+            <p class="muted small">Copy the text of a booking confirmation or e-receipt (flight, hotel, Uber, restaurant…) and paste it here.</p>
+            <textarea id="email-text" rows="6" placeholder="Paste email text here…"></textarea>
+            <div class="row gap"><button id="btn-add-email" class="btn">Add email to inbox</button></div>
+          </div>
+
+          <div class="card">
+            <div class="row between wrap">
+              <h3>Inbox — not yet processed</h3>
+              <div class="row gap">
+                <button id="btn-analyze" class="btn primary">✨ Read &amp; fill in automatically</button>
+              </div>
+            </div>
+            <ul id="inbox-list" class="file-list"></ul>
+            <p id="ai-status" class="muted small"></p>
+            <p class="muted small" id="ai-hint"></p>
+          </div>
+
+          <div class="card">
+            <h3>All receipts on this trip</h3>
+            <ul id="receipt-list" class="file-list"></ul>
+          </div>
+        </div>
+
+        <!-- DETAILS -->
+        <div class="tab-panel" data-panel="details" hidden>
+          <form id="details-form" class="card form-grid">
+            <h3 class="span2">Traveller</h3>
+            <label>Full name<input name="traveler.name" /></label>
+            <label>Employee ID<input name="traveler.employeeId" /></label>
+            <label>Email<input name="traveler.email" type="email" /></label>
+            <label>Department<input name="traveler.department" /></label>
+            <label>Cost centre / project code<input name="traveler.costCenter" /></label>
+            <label>Approving manager<input name="traveler.manager" /></label>
+
+            <h3 class="span2">Trip</h3>
+            <label class="span2">Trip name<input name="name" required /></label>
+            <label class="span2">Business purpose<textarea name="purpose" rows="2" placeholder="e.g. Client workshop with ACME GmbH, quarterly sales review"></textarea></label>
+            <label>Destination(s)<input name="destination" placeholder="e.g. Munich, Germany" /></label>
+            <label>Client / customer visited<input name="client" /></label>
+            <label>Departure date<input name="startDate" type="date" /></label>
+            <label>Return date<input name="endDate" type="date" /></label>
+
+            <h3 class="span2">Money</h3>
+            <label>Reimbursement currency<input name="baseCurrency" maxlength="3" placeholder="EUR" /></label>
+            <label>Cash advance received<input name="advance" type="number" step="0.01" min="0" /></label>
+            <label class="check span2"><input type="checkbox" name="perDiem.enabled" /> Claim daily allowance (per diem)</label>
+            <label>Per diem — daily rate<input name="perDiem.rate" type="number" step="0.01" min="0" /></label>
+            <label>First &amp; last day at (%)<input name="perDiem.travelDayPct" type="number" step="1" min="0" max="100" placeholder="100" /></label>
+            <label class="span2">Notes for the expenses office<textarea name="notes" rows="2"></textarea></label>
+            <div class="span2 muted small">Changes save automatically.</div>
+          </form>
+        </div>
+
+        <!-- ITINERARY -->
+        <div class="tab-panel" data-panel="itinerary" hidden>
+          <div class="card">
+            <div class="row between"><h3>Flights &amp; trains</h3><button class="btn" id="btn-add-flight">+ Add segment</button></div>
+            <div class="table-wrap"><table class="grid" id="flights-table"></table></div>
+          </div>
+          <div class="card">
+            <div class="row between"><h3>Hotels</h3><button class="btn" id="btn-add-hotel">+ Add hotel stay</button></div>
+            <div class="table-wrap"><table class="grid" id="hotels-table"></table></div>
+          </div>
+        </div>
+
+        <!-- EXPENSES -->
+        <div class="tab-panel" data-panel="expenses" hidden>
+          <div class="card">
+            <div class="row between wrap">
+              <h3>Expenses</h3>
+              <div class="row gap">
+                <button class="btn" id="btn-rates">↻ Fill exchange rates</button>
+                <button class="btn primary" id="btn-add-expense">+ Add expense</button>
+              </div>
+            </div>
+            <div id="expense-warnings"></div>
+            <div class="table-wrap"><table class="grid" id="expenses-table"></table></div>
+            <div id="expense-totals" class="totals"></div>
+          </div>
+        </div>
+
+        <!-- REPORT -->
+        <div class="tab-panel" data-panel="report" hidden>
+          <div class="row gap no-print report-actions">
+            <button class="btn primary" id="btn-print">🖨 Print / Save as PDF</button>
+            <button class="btn" id="btn-csv">⬇ Download CSV (Excel)</button>
+            <label class="check"><input type="checkbox" id="opt-receipts" checked /> Include receipt images</label>
+          </div>
+          <div id="report"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Expense editor -->
+  <dialog id="expense-dialog">
+    <form method="dialog" id="expense-form" class="form-grid">
+      <h3 class="span2" id="expense-dialog-title">Expense</h3>
+      <label>Date<input name="date" type="date" required /></label>
+      <label>Category<select name="category" required></select></label>
+      <label>Vendor / merchant<input name="vendor" /></label>
+      <label>Description<input name="description" /></label>
+      <label>Amount<input name="amount" type="number" step="0.01" required /></label>
+      <label>Currency<input name="currency" maxlength="3" required /></label>
+      <label>Exchange rate → <span class="base-ccy"></span><input name="rate" type="number" step="0.000001" min="0" /></label>
+      <label>Paid with<select name="payment">
+        <option value="personal">Personal card / cash (reimburse me)</option>
+        <option value="company">Company card / paid by company</option>
+      </select></label>
+      <label>Attendees (meals / entertainment)<input name="attendees" placeholder="Names, company" /></label>
+      <label>Receipt<select name="receiptId"></select></label>
+      <label class="span2">Notes<input name="notes" /></label>
+      <div class="span2 row between">
+        <button type="button" class="btn danger" id="btn-expense-delete">Delete</button>
+        <div class="row gap">
+          <button value="cancel" class="btn" formnovalidate>Cancel</button>
+          <button value="save" class="btn primary">Save</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- AI review -->
+  <dialog id="review-dialog" class="wide">
+    <form method="dialog">
+      <h3>Review what was found</h3>
+      <p class="muted small">Untick anything you don't want added. You can edit everything afterwards.</p>
+      <div id="review-body"></div>
+      <div class="row between">
+        <span></span>
+        <div class="row gap">
+          <button value="cancel" class="btn">Discard</button>
+          <button value="ok" class="btn primary">Add selected</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Settings -->
+  <dialog id="settings-dialog">
+    <form method="dialog" class="form-grid" id="settings-form">
+      <h3 class="span2">Settings</h3>
+      <label class="span2">Claude API key (for automatic reading of receipts)
+        <input name="apiKey" type="password" autocomplete="off" placeholder="sk-ant-…" />
+      </label>
+      <p class="span2 muted small">The key is stored only in this browser and sent only to api.anthropic.com. Without a key you can still attach receipts and type the details in by hand. Get a key at console.anthropic.com.</p>
+      <label>Default reimbursement currency<input name="defaultCurrency" maxlength="3" placeholder="EUR" /></label>
+      <label>Your name (pre-fills new trips)<input name="travelerName" /></label>
+      <label>Employee ID<input name="employeeId" /></label>
+      <label>Department<input name="department" /></label>
+      <label>Cost centre<input name="costCenter" /></label>
+      <label>Manager<input name="manager" /></label>
+      <div class="span2 row between">
+        <span></span>
+        <div class="row gap"><button value="cancel" class="btn">Cancel</button><button value="save" class="btn primary">Save</button></div>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
