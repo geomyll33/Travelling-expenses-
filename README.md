@@ -50,3 +50,7 @@ Trips and receipts are stored in your browser (IndexedDB) on this device only. U
 - `styles.css`: screen and print styles (A4)
 - `app.js`: all app logic
 - `vendor/anthropic-sdk.js`: browser bundle of `@anthropic-ai/sdk@1.6.0`
+
+## Hosting on GitHub Pages
+
+`.github/workflows/pages.yml` publishes the app each time you push. Turn it on once: go to **Settings → Pages → Build and deployment → Source** and choose **GitHub Actions**. The site will then be at `https://geomyll33.github.io/Travelling-expenses-/`.
