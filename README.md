@@ -17,7 +17,7 @@ It also works when hosted on GitHub Pages, Netlify and similar services.
 
 1. **+ New trip**: fill in the traveller, the business purpose, the dates and the reimbursement currency. If your company pays a daily allowance, also set the per diem.
 2. **📥 Add receipts**: drag in photos, PDFs or `.eml`/`.txt` emails, paste a screenshot (Ctrl/⌘+V), or paste an email's text.
-3. **✨ Read & fill in automatically**: Claude reads each document. You then review what it found, untick anything wrong, and add the rest. Possible duplicates are unticked for you, e.g. a booking email and the hotel bill showing the same charge.
+3. **✨ Read & fill in automatically**: each document is read (on your device by default, no key needed). You then review what it found, untick anything wrong, and add the rest. Possible duplicates are unticked for you, e.g. a booking email and the hotel bill showing the same charge.
    - Expenses are sorted into categories: airfare, baggage, train, taxi/rideshare, car rental, fuel, parking, hotel, meals, client entertainment, conference fees, roaming, visa, insurance, laundry, tips, supplies and other.
    - Flight/train segments and hotel stays go into the **Itinerary** tab.
    - Empty trip details (destination, dates, traveller name) are suggested from the documents.
@@ -34,11 +34,13 @@ It also works when hosted on GitHub Pages, Netlify and similar services.
 - Items to review, a certification statement and signature lines
 - An appendix with every receipt image and email text, numbered to match the list
 
-## Automatic reading (Claude API key)
+## How receipts are read
 
-To read receipts automatically, open **⚙ Settings** and enter an Anthropic API key from console.anthropic.com. The key is stored only in your browser and is sent only to `api.anthropic.com`. Without a key, receipts are still stored and attached, and you enter the details with ✍️.
+You choose the method in **⚙ Settings**.
 
-The app uses the official Anthropic TypeScript SDK (bundled in `vendor/anthropic-sdk.js`, version 1.6.0) with the model `claude-opus-5-5`, structured JSON output, and server-side refusal fallback (`fallbacks: "default"`) switched on.
+**On this device (default): free, no key, nothing is uploaded.** Photos and scanned PDFs go through text recognition (Tesseract OCR, English and Greek) in your browser. Text PDFs are read with pdf.js, and emails as text. Simple rules then find the total (the "amount paid / total due / ΣΥΝΟΛΟ / πληρωτέο" line, including the tip), the date, currency, merchant and category. They also pick up flight numbers and hotel check-in/check-out dates. Every value can be corrected in the review step, and you can open the text that was read to check it. The first use downloads about 12 MB of recognition data, which the browser then caches.
+
+**Claude AI (optional):** this is more accurate on unusual layouts, handwriting and any language. It needs your own Anthropic API key, which is stored only in your browser and sent only to `api.anthropic.com`. It uses the official Anthropic SDK (`vendor/anthropic-sdk.js`, v1.6.0) with `claude-opus-5-5`, structured JSON output and server-side refusal fallback.
 
 ## Your data
 
@@ -49,7 +51,10 @@ Trips and receipts are stored in your browser (IndexedDB) on this device only. U
 - `index.html`: page layout and dialogs
 - `styles.css`: screen and print styles (A4)
 - `app.js`: all app logic
+- `local-reader.js`: on-device reading (OCR + rules)
 - `vendor/anthropic-sdk.js`: browser bundle of `@anthropic-ai/sdk@1.6.0`
+- `vendor/ocr/`: `tesseract.js@5.1.1`, its WebAssembly core, and English + Greek language data (Apache-2.0)
+- `vendor/pdfjs/`: `pdfjs-dist@4.10.38` (Apache-2.0)
 
 ## Hosting on GitHub Pages
 

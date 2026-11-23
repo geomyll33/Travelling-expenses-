@@ -2,6 +2,7 @@
 // Everything is stored locally in the browser (IndexedDB). Automatic reading of
 // receipts uses the Claude API with the user's own key.
 import Anthropic from "./vendor/anthropic-sdk.js";
+import { readLocally } from "./local-reader.js";
 
 /* ------------------------------------------------------------------ */
 /* Constants                                                           */
@@ -360,9 +361,9 @@ function renderInbox() {
         .join("")
     : `<li class="muted small">No receipts yet.</li>`;
 
-  $("#ai-hint").innerHTML = settings.apiKey
-    ? ""
-    : `To read receipts automatically, add your Claude API key in <a href="#" class="link" id="lnk-settings">Settings</a>. Without it, use ✍️ to type the details in yourself.`;
+  $("#ai-hint").innerHTML = useClaude()
+    ? `Reading with Claude AI. <a href="#" class="link" id="lnk-settings">Change</a>`
+    : `Receipts are read on this device: free, no key needed, nothing is uploaded. Always check the amounts in the review step. You can also use ✍️ to type the details in yourself. <a href="#" class="link" id="lnk-settings">Reading options</a>`;
   $("#lnk-settings")?.addEventListener("click", (e) => {
     e.preventDefault();
     openSettings();
@@ -617,13 +618,14 @@ async function extractFromFile(client, f) {
   return JSON.parse(text);
 }
 
+function useClaude() {
+  return settings.reader === "claude" && !!settings.apiKey;
+}
+
 async function analyzeInbox() {
   const pending = files.filter((f) => !f.processed);
   if (!pending.length) return toast("The inbox is empty — add receipts first.");
-  if (!settings.apiKey) {
-    toast("Add your Claude API key in Settings to read receipts automatically.");
-    return openSettings();
-  }
+  if (!useClaude()) return analyzeLocally(pending);
   const client = new Anthropic({ apiKey: settings.apiKey, dangerouslyAllowBrowser: true, maxRetries: 3 });
   const btn = $("#btn-analyze");
   btn.disabled = true;
@@ -659,6 +661,36 @@ async function analyzeInbox() {
   if (results.length) openReview(results);
 }
 $("#btn-analyze").addEventListener("click", analyzeInbox);
+
+// Free, on-device reading (OCR + rules). One document at a time: OCR is heavy on phones.
+async function analyzeLocally(pending) {
+  const btn = $("#btn-analyze");
+  const status = $("#ai-status");
+  btn.disabled = true;
+  const results = [];
+  const errors = [];
+  const ctx = { baseCurrency: trip.baseCurrency, startDate: trip.startDate, endDate: trip.endDate };
+  for (let i = 0; i < pending.length; i++) {
+    const f = pending[i];
+    const label = `Reading ${i + 1} of ${pending.length}: ${f.name}`;
+    status.textContent = label + "…";
+    try {
+      const data = await readLocally(f, ctx, (m) => {
+        if (m?.status === "recognizing text") status.textContent = `${label} (${Math.round((m.progress || 0) * 100)}%)`;
+        else if (m?.status && /load/i.test(m.status)) status.textContent = `${label} (preparing text recognition, first time only…)`;
+      });
+      results.push({ file: f, data });
+    } catch (err) {
+      console.error(err);
+      errors.push({ file: f, msg: err?.message || String(err) });
+    }
+  }
+  btn.disabled = false;
+  status.textContent = errors.length
+    ? `Finished with problems: ${errors.map((e) => `"${e.file.name}": ${e.msg}`).join(" · ")}`
+    : `Finished reading ${results.length} document(s).`;
+  if (results.length) openReview(results);
+}
 
 /* ---------- Review of extracted data ---------- */
 
@@ -724,17 +756,28 @@ function openReview(results) {
   const ho = items.map((it, i) => [it, i]).filter(([it]) => it.kind === "hotel");
 
   let html = results
-    .map(({ file, data }) => `<div class="small"><strong>${esc(file.name)}</strong> — ${esc(data.document_type)}: ${esc(data.summary)}</div>`)
+    .map(
+      ({ file, data }) =>
+        `<div class="small"><strong>${esc(file.name)}</strong> — ${esc(data.document_type)}: ${esc(data.summary)}${
+          data._text ? ` <details><summary class="link">text that was read</summary><pre class="ocr-text">${esc(data._text.slice(0, 4000))}</pre></details>` : ""
+        }</div>`
+    )
     .join("");
+  if (results.some((r) => r.data._local))
+    html += `<p class="warning small">Read on this device. Please check each <strong>amount</strong> and <strong>date</strong> against the receipt before adding.</p>`;
+  const catOpts = (sel) => CATEGORIES.map((c) => `<option value="${c.key}" ${c.key === sel ? "selected" : ""}>${c.icon} ${c.label}</option>`).join("");
   if (ex.length)
-    html += `<h4>Expenses</h4><div class="table-wrap"><table class="grid"><tr><th></th><th>Date</th><th>Category</th><th>Vendor / description</th><th class="num">Amount</th><th>Paid</th><th>Source</th></tr>${ex
+    html += `<h4>Expenses <span class="small muted">(you can correct anything here)</span></h4><div class="table-wrap"><table class="grid review-edit"><tr><th></th><th>Date</th><th>Category</th><th>Vendor / description</th><th class="num">Amount</th><th>Ccy</th><th>Paid by</th><th>Source</th></tr>${ex
       .map(([it, i]) =>
         row(
           it,
           i,
-          `<td>${esc(it.x.date)}</td><td>${CAT[it.x.category]?.icon || ""} ${esc(CAT[it.x.category]?.label || it.x.category)}</td><td>${esc(it.x.vendor)}<div class="small muted">${esc(
-            it.x.description
-          )}</div></td><td class="num">${fmtMoney(it.x.amount, normCcy(it.x.currency))}</td><td>${esc(it.x.payment)}</td>`
+          `<td><input type="date" data-e="${i}" data-k="date" value="${esc(it.x.date)}" /></td>
+          <td><select data-e="${i}" data-k="category">${catOpts(it.x.category)}</select></td>
+          <td><input data-e="${i}" data-k="vendor" value="${esc(it.x.vendor)}" placeholder="Vendor" /><input data-e="${i}" data-k="description" value="${esc(it.x.description)}" placeholder="Description" /></td>
+          <td class="num"><input type="number" step="0.01" data-e="${i}" data-k="amount" value="${esc(it.x.amount)}" style="width:90px" /></td>
+          <td><input data-e="${i}" data-k="currency" value="${esc(normCcy(it.x.currency))}" maxlength="3" style="width:60px" /></td>
+          <td><select data-e="${i}" data-k="payment"><option value="personal">Me</option><option value="company" ${it.x.payment === "company" ? "selected" : ""}>Company</option></select></td>`
         )
       )
       .join("")}</table></div>`;
@@ -771,6 +814,11 @@ $("#review-dialog").addEventListener("close", async () => {
   pendingReview = null;
   if (dlg.returnValue !== "ok") return;
   const checked = new Set($$("#review-body input[data-i]:checked").map((c) => +c.dataset.i));
+  // apply edits made in the review table
+  for (const el of $$("#review-body [data-e]")) {
+    const it = items[+el.dataset.e];
+    if (it) it.x[el.dataset.k] = el.dataset.k === "amount" ? Number(el.value) || 0 : el.value.trim();
+  }
   let ne = 0;
   items.forEach((it, i) => {
     if (!checked.has(i)) return;
@@ -1362,14 +1410,24 @@ $("#import-file").addEventListener("change", async (e) => {
 function openSettings() {
   const f = $("#settings-form");
   for (const k of ["apiKey", "defaultCurrency", "travelerName", "employeeId", "department", "costCenter", "manager"]) f[k].value = settings[k] || "";
+  f.reader.value = settings.reader === "claude" ? "claude" : "local";
+  $("#apikey-row").hidden = f.reader.value !== "claude";
   $("#settings-dialog").showModal();
 }
 $("#btn-settings").addEventListener("click", openSettings);
+$("#settings-form").addEventListener("change", (e) => {
+  if (e.target.name === "reader") $("#apikey-row").hidden = e.target.value !== "claude";
+});
 $("#settings-dialog").addEventListener("close", () => {
   if ($("#settings-dialog").returnValue !== "save") return;
   const f = $("#settings-form");
   for (const k of ["apiKey", "defaultCurrency", "travelerName", "employeeId", "department", "costCenter", "manager"]) settings[k] = f[k].value.trim();
   settings.defaultCurrency = (settings.defaultCurrency || "").toUpperCase();
+  settings.reader = f.reader.value;
+  if (settings.reader === "claude" && !settings.apiKey) {
+    settings.reader = "local";
+    toast("No API key entered, so receipts will be read on this device.");
+  }
   saveSettings();
   if (trip) renderInbox();
   toast("Settings saved.");
