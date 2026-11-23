@@ -53,4 +53,4 @@ Trips and receipts are stored in your browser (IndexedDB) on this device only. U
 
 ## Hosting on GitHub Pages
 
-`.github/workflows/pages.yml` publishes the app each time you push. Turn it on once: go to **Settings → Pages → Build and deployment → Source** and choose **GitHub Actions**. The site will then be at `https://geomyll33.github.io/Travelling-expenses-/`.
+The app is published straight from the `ccr-68f98cab-fog57g` branch (Settings → Pages → Deploy from a branch, `/ (root)`). Every push updates the site at `https://geomyll33.github.io/Travelling-expenses-/`.
